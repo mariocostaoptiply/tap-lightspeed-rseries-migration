@@ -1,4 +1,4 @@
-"""Lightspeed tap class."""
+"""Lightspeed R-Series tap class."""
 
 from typing import List
 
@@ -12,6 +12,7 @@ from tap_lightspeed_rseries.streams import (
     OrderStream,
     SaleStream,
     ShipmentStream,
+    ShopStream
 )
 
 STREAM_TYPES = [
@@ -21,6 +22,7 @@ STREAM_TYPES = [
     OrderStream,
     SaleStream,
     ShipmentStream,
+    ShopStream
 ]
 
 
@@ -67,9 +69,40 @@ class TapRLightspeed(Tap):
             required=False,
         ),
         th.Property(
-            "expires",
-            th.IntegerType,
+            "account_id",
+            th.StringType,
             required=False,
+            description="Optional account ID to sync. If not provided, all accounts will be synced.",
+        ),
+        th.Property(
+            "items_relations",
+            th.StringType,
+            required=False,
+            description="Optional items relations to sync. If not provided, all relations will be synced.",
+        ),
+        th.Property(
+            "vendors_relations",
+            th.StringType,
+            required=False,
+            description="Optional vendors relations to sync. If not provided, all relations will be synced.",
+        ),
+        th.Property(
+            "orders_relations",
+            th.StringType,
+            required=False,
+            description="Optional orders relations to sync. If not provided, all relations will be synced.",
+            ),
+        th.Property(
+            "sales_relations",
+            th.StringType,
+            required=False,
+            description="Optional sales relations to sync. If not provided, all relations will be synced.",
+        ),
+        th.Property(
+            "shipments_relations",
+            th.StringType,
+            required=False,
+            description="Optional shipments relations to sync. If not provided, all relations will be synced.",
         ),
     ).to_dict()
 

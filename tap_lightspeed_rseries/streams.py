@@ -20,17 +20,7 @@ class AccountStream(LightspeedRSeriesStream):
     schema = th.PropertiesList(
         th.Property("accountID", th.StringType, required=True),
         th.Property("name", th.StringType, required=True),
-        th.Property(
-            "link",
-            th.ObjectType(
-                th.Property(
-                    "@attributes",
-                    th.ObjectType(
-                        th.Property("href", th.StringType),
-                    ),
-                ),
-            ),
-        ),
+        th.Property("link", th.StringType),
     ).to_dict()
 
     def parse_response(self, response: requests.Response):
@@ -42,6 +32,32 @@ class AccountStream(LightspeedRSeriesStream):
             self.logger.warning("Account object not found in response")
 
     def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
+        
+        accounts_ids = self.config.get("account_ids")
+        if accounts_ids:
+            # Handle comma-separated account IDs
+            if isinstance(accounts_ids, str):
+                accounts_ids = [id.strip() for id in accounts_ids.split(",") if id.strip()]
+            elif isinstance(accounts_ids, (int, float)):
+                accounts_ids = [str(accounts_ids)]
+            elif isinstance(accounts_ids, list):
+                accounts_ids = [str(id).strip() for id in accounts_ids if id]
+            
+            # Normalize AccountID from record to string for comparison
+            record_account_id = str(record.get("accountID", ""))
+            
+            # Skip this account if it's not in the allowed list
+            if record_account_id not in accounts_ids:
+                self.logger.info(
+                    f"Skipping account '{record.get('name', 'Unknown')}' "
+                    f"({record_account_id}) - not in account_ids filter [{', '.join(accounts_ids)}]"
+                )
+                return None
+            else:
+                self.logger.info(
+                    f"Processing account '{record.get('name', 'Unknown')}' "
+                    f"({record_account_id}) - matches account_ids filter"
+                )
         return {
             "accountID": record.get("accountID"),
             "account_name": record.get("name"),
@@ -51,6 +67,16 @@ class AccountStream(LightspeedRSeriesStream):
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         return {}
+
+    def post_process(self, row: dict, context: Optional[dict]) -> dict:
+        # Convert link to JSON string for consistency
+        if "link" in row:
+            if row["link"] and row["link"] != "":
+                row["link"] = json.dumps(row["link"])
+            else:
+                row["link"] = None
+        
+        return row
 
 
 class ItemStream(LightspeedRSeriesStream):
@@ -93,166 +119,30 @@ class ItemStream(LightspeedRSeriesStream):
         th.Property("seasonID", th.StringType),
         th.Property("defaultVendorID", th.StringType),
         th.Property("laborDurationMinutes", th.StringType),
-        th.Property(
-            "Category",
-            th.ObjectType(
-                th.Property("categoryID", th.StringType),
-                th.Property("name", th.StringType),
-                th.Property("nodeDepth", th.StringType),
-                th.Property("fullPathName", th.StringType),
-                th.Property("leftNode", th.StringType),
-                th.Property("rightNode", th.StringType),
-                th.Property("createTime", th.DateTimeType),
-                th.Property("timeStamp", th.DateTimeType),
-                th.Property("parentID", th.StringType),
-            ),
-        ),
-        th.Property(
-            "TaxClass",
-            th.ObjectType(
-                th.Property("taxClassID", th.StringType),
-                th.Property("name", th.StringType),
-                th.Property("classType", th.StringType),
-                th.Property("timeStamp", th.DateTimeType),
-            ),
-        ),
-        th.Property(
-            "Manufacturer",
-            th.ObjectType(
-                th.Property("manufacturerID", th.StringType),
-                th.Property("name", th.StringType),
-                th.Property("createTime", th.DateTimeType),
-                th.Property("timeStamp", th.DateTimeType),
-            ),
-        ),
-        th.Property(
-            "Note",
-            th.ObjectType(
-                th.Property("note", th.StringType),
-                th.Property("isPublic", th.StringType),
-                th.Property("timeStamp", th.DateTimeType),
-            ),
-        ),
-        th.Property(
-            "ItemShops",
-            th.ObjectType(
-                th.Property(
-                    "ItemShop",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("itemShopID", th.StringType),
-                            th.Property("qoh", th.StringType),
-                            th.Property("sellable", th.StringType),
-                            th.Property("backorder", th.StringType),
-                            th.Property("componentQoh", th.StringType),
-                            th.Property("componentBackorder", th.StringType),
-                            th.Property("onLayaway", th.StringType),
-                            th.Property("onSpecialOrder", th.StringType),
-                            th.Property("onWorkorder", th.StringType),
-                            th.Property("onTransferOut", th.StringType),
-                            th.Property("onTransferIn", th.StringType),
-                            th.Property("averageCost", th.StringType),
-                            th.Property("totalValueFifo", th.StringType),
-                            th.Property("totalValueAvgCost", th.StringType),
-                            th.Property("totalValueNegativeInventory", th.StringType),
-                            th.Property("lastReceivedCost", th.StringType),
-                            th.Property("nextFifoLotCost", th.StringType),
-                            th.Property("reorderPoint", th.StringType),
-                            th.Property("reorderLevel", th.StringType),
-                            th.Property("timeStamp", th.DateTimeType),
-                            th.Property("itemID", th.StringType),
-                            th.Property("shopID", th.StringType),
-                            th.Property("lastReceivedLotID", th.StringType),
-                            th.Property("nextFifoLotID", th.StringType),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "ItemVendorNums",
-            th.ObjectType(
-                th.Property(
-                    "ItemVendorNum",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("itemVendorNumID", th.StringType),
-                            th.Property("value", th.StringType),
-                            th.Property("timeStamp", th.DateTimeType),
-                            th.Property("cost", th.StringType),
-                            th.Property("b2bCatalogUUID", th.StringType),
-                            th.Property("itemID", th.StringType),
-                            th.Property("vendorID", th.StringType),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "ItemComponents",
-            th.ObjectType(
-                th.Property(
-                    "ItemComponent",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("itemComponentID", th.StringType),
-                            th.Property("quantity", th.StringType),
-                            th.Property("componentGroup", th.StringType),
-                            th.Property("assemblyItemID", th.StringType),
-                            th.Property("componentItemID", th.StringType),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "ItemUUID",
-            th.ObjectType(
-                th.Property(
-                    "ItemUUID",
-                    th.ObjectType(
-                        th.Property("productUUID", th.StringType),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "Prices",
-            th.ObjectType(
-                th.Property(
-                    "ItemPrice",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("amount", th.StringType),
-                            th.Property("useTypeID", th.StringType),
-                            th.Property("useType", th.StringType),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "Tags",
-            th.ObjectType(
-                th.Property(
-                    "@attributes",
-                    th.ObjectType(
-                        th.Property("count", th.StringType),
-                    ),
-                ),
-                th.Property(
-                    "tag",
-                    th.ArrayType(th.StringType),
-                ),
-            ),
-        ),
+        th.Property("Category", th.StringType),
+        th.Property("TaxClass", th.StringType),
+        th.Property("Manufacturer", th.StringType),
+        th.Property("Note", th.StringType),
+        th.Property("ItemShops", th.StringType),
+        th.Property("ItemVendorNums", th.StringType),
+        th.Property("ItemComponents", th.StringType),
+        th.Property("ItemUUID", th.StringType),
+        th.Property("Prices", th.StringType),
+        th.Property("Tags", th.StringType),
     ).to_dict()
 
     def get_url_params(
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         params = super().get_url_params(context, next_page_token)
-        params["load_relations"] = "all"
+        
+        relations = self.config.get("items_relations", "all")
+        
+        if relations != "all":
+            relations = [relation.strip() for relation in relations.split(",") if relation.strip()]
+            params["load_relations"] = json.dumps(relations)
+        else:
+            params["load_relations"] = "all"
         return params
 
     def post_process(self, row: dict, context: Optional[dict]) -> dict:
@@ -260,29 +150,17 @@ class ItemStream(LightspeedRSeriesStream):
             row["accountID"] = context.get("accountID")
             row["account_name"] = context.get("account_name")
         
-        # Normalize ItemVendorNums.ItemVendorNum: convert single object to array
-        if "ItemVendorNums" in row and row["ItemVendorNums"]:
-            item_vendor_nums = row["ItemVendorNums"]
-            if "ItemVendorNum" in item_vendor_nums:
-                item_vendor_num = item_vendor_nums["ItemVendorNum"]
-                # If it's a dict (single object), convert to array
-                if isinstance(item_vendor_num, dict):
-                    item_vendor_nums["ItemVendorNum"] = [item_vendor_num]
-                # If it's already a list, keep it as is
-                elif not isinstance(item_vendor_num, list):
-                    item_vendor_nums["ItemVendorNum"] = []
-        
-        # Normalize ItemComponents.ItemComponent: convert single object to array
-        if "ItemComponents" in row and row["ItemComponents"]:
-            item_components = row["ItemComponents"]
-            if "ItemComponent" in item_components:
-                item_component = item_components["ItemComponent"]
-                # If it's a dict (single object), convert to array
-                if isinstance(item_component, dict):
-                    item_components["ItemComponent"] = [item_component]
-                # If it's already a list, keep it as is
-                elif not isinstance(item_component, list):
-                    item_components["ItemComponent"] = []
+        # Convert all relation fields to JSON strings for simplicity
+        relation_fields = [
+            "Category", "TaxClass", "Manufacturer", "Note", "ItemShops",
+            "ItemVendorNums", "ItemComponents", "ItemUUID", "Prices", "Tags"
+        ]
+        for field in relation_fields:
+            if field in row:
+                if row[field] and row[field] != "":
+                    row[field] = json.dumps(row[field])
+                else:
+                    row[field] = None
         
         return row
 
@@ -312,103 +190,23 @@ class VendorStream(LightspeedRSeriesStream):
         th.Property("shareSellThrough", th.StringType),
         th.Property("timeStamp", th.DateTimeType, required=True),
         th.Property("b2bSellerUID", th.StringType),
-        th.Property(
-            "purchasingCurrency",
-            th.ObjectType(
-                th.Property("code", th.StringType),
-                th.Property("symbol", th.StringType),
-                th.Property("rate", th.StringType),
-            ),
-        ),
-        th.Property(
-            "Contact",
-            th.ObjectType(
-                th.Property("contactID", th.StringType),
-                th.Property("custom", th.StringType),
-                th.Property("noEmail", th.StringType),
-                th.Property("noPhone", th.StringType),
-                th.Property("noMail", th.StringType),
-                th.Property(
-                    "Addresses",
-                    th.ObjectType(
-                        th.Property(
-                            "ContactAddress",
-                            th.ObjectType(
-                                th.Property("address1", th.StringType),
-                                th.Property("address2", th.StringType),
-                                th.Property("city", th.StringType),
-                                th.Property("state", th.StringType),
-                                th.Property("zip", th.StringType),
-                                th.Property("country", th.StringType),
-                                th.Property("countryCode", th.StringType),
-                                th.Property("stateCode", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property(
-                    "Phones",
-                    th.ObjectType(
-                        th.Property(
-                            "ContactPhone",
-                            th.ArrayType(
-                                th.ObjectType(
-                                    th.Property("number", th.StringType),
-                                    th.Property("useType", th.StringType),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property(
-                    "Emails",
-                    th.ObjectType(
-                        th.Property(
-                            "ContactEmail",
-                            th.ArrayType(
-                                th.ObjectType(
-                                    th.Property("address", th.StringType),
-                                    th.Property("useType", th.StringType),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property(
-                    "Websites",
-                    th.ObjectType(
-                        th.Property(
-                            "ContactWebsite",
-                            th.ArrayType(
-                                th.ObjectType(
-                                    th.Property("url", th.StringType),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property("timeStamp", th.DateTimeType),
-            ),
-        ),
-        th.Property(
-            "Reps",
-            th.ObjectType(
-                th.Property(
-                    "VendorRep",
-                    th.ObjectType(
-                        th.Property("firstName", th.StringType),
-                        th.Property("lastName", th.StringType),
-                    ),
-                ),
-            ),
-        ),
+        th.Property("purchasingCurrency", th.StringType),
+        th.Property("Contact", th.StringType),
+        th.Property("Reps", th.StringType),
     ).to_dict()
 
     def get_url_params(
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         params = super().get_url_params(context, next_page_token)
-        params["load_relations"] = json.dumps(["Contact"])
+        
+        relations = self.config.get("vendors_relations", "all")
+        
+        if relations != "all":
+            relations = [relation.strip() for relation in relations.split(",") if relation.strip()]
+            params["load_relations"] = json.dumps(relations)
+        else:
+            params["load_relations"] = "all"
         return params
 
     def post_process(self, row: dict, context: Optional[dict]) -> dict:
@@ -416,37 +214,14 @@ class VendorStream(LightspeedRSeriesStream):
             row["accountID"] = context.get("accountID")
             row["account_name"] = context.get("account_name")
         
-        # Normalize Contact.Phones.ContactPhone: convert single object to array
-        if "Contact" in row and row["Contact"]:
-            contact = row["Contact"]
-            if "Phones" in contact and contact["Phones"]:
-                phones = contact["Phones"]
-                if "ContactPhone" in phones:
-                    contact_phone = phones["ContactPhone"]
-                    if isinstance(contact_phone, dict):
-                        phones["ContactPhone"] = [contact_phone]
-                    elif not isinstance(contact_phone, list):
-                        phones["ContactPhone"] = []
-            
-            # Normalize Contact.Emails.ContactEmail: convert single object to array
-            if "Emails" in contact and contact["Emails"]:
-                emails = contact["Emails"]
-                if "ContactEmail" in emails:
-                    contact_email = emails["ContactEmail"]
-                    if isinstance(contact_email, dict):
-                        emails["ContactEmail"] = [contact_email]
-                    elif not isinstance(contact_email, list):
-                        emails["ContactEmail"] = []
-            
-            # Normalize Contact.Websites.ContactWebsite: convert single object to array
-            if "Websites" in contact and contact["Websites"]:
-                websites = contact["Websites"]
-                if "ContactWebsite" in websites:
-                    contact_website = websites["ContactWebsite"]
-                    if isinstance(contact_website, dict):
-                        websites["ContactWebsite"] = [contact_website]
-                    elif not isinstance(contact_website, list):
-                        websites["ContactWebsite"] = []
+        # Convert all relation fields to JSON strings for simplicity
+        relation_fields = ["Contact", "purchasingCurrency", "Reps"]
+        for field in relation_fields:
+            if field in row:
+                if row[field] and row[field] != "":
+                    row[field] = json.dumps(row[field])
+            else:
+                    row[field] = None
         
         return row
 
@@ -501,35 +276,7 @@ class OrderStream(LightspeedRSeriesStream):
         th.Property("noteID", th.StringType),
         th.Property("shopID", th.StringType),
         th.Property("createdByEmployeeID", th.StringType),
-        th.Property(
-            "OrderLines",
-            th.ObjectType(
-                th.Property(
-                    "OrderLine",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("orderLineID", th.StringType),
-                            th.Property("quantity", th.StringType),
-                            th.Property("price", th.StringType),
-                            th.Property("originalPrice", th.StringType),
-                            th.Property("vendorCost", th.StringType),
-                            th.Property("checkedIn", th.StringType),
-                            th.Property("numReceived", th.StringType),
-                            th.Property("timeStamp", th.DateTimeType),
-                            th.Property("total", th.StringType),
-                            th.Property("createTime", th.DateTimeType),
-                            th.Property("shippingCost", th.StringType),
-                            th.Property("shippingVendorCost", th.StringType),
-                            th.Property("discountMoneyValue", th.StringType),
-                            th.Property("discountMoneyVendorValue", th.StringType),
-                            th.Property("discountPercentValue", th.StringType),
-                            th.Property("orderID", th.StringType),
-                            th.Property("itemID", th.StringType),
-                        ),
-                    ),
-                ),
-            ),
-        ),
+        th.Property("OrderLines", th.StringType),
     ).to_dict()
 
     def parse_response(self, response: requests.Response):
@@ -567,7 +314,14 @@ class OrderStream(LightspeedRSeriesStream):
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         params = super().get_url_params(context, next_page_token)
-        params["load_relations"] = json.dumps(["OrderLines"])
+        
+        relations = self.config.get("orders_relations", "all")
+        
+        if relations != "all":
+            relations = [relation.strip() for relation in relations.split(",") if relation.strip()]
+            params["load_relations"] = json.dumps(relations)
+        else:
+            params["load_relations"] = "all"
         return params
 
     def post_process(self, row: dict, context: Optional[dict]) -> dict:
@@ -575,15 +329,12 @@ class OrderStream(LightspeedRSeriesStream):
             row["accountID"] = context.get("accountID")
             row["account_name"] = context.get("account_name")
         
-        # Normalize OrderLines.OrderLine: convert single object to array
-        if "OrderLines" in row and row["OrderLines"]:
-            order_lines = row["OrderLines"]
-            if "OrderLine" in order_lines:
-                order_line = order_lines["OrderLine"]
-                if isinstance(order_line, dict):
-                    order_lines["OrderLine"] = [order_line]
-                elif not isinstance(order_line, list):
-                    order_lines["OrderLine"] = []
+        # Convert OrderLines to JSON string for simplicity
+        if "OrderLines" in row:
+            if row["OrderLines"] and row["OrderLines"] != "":
+                row["OrderLines"] = json.dumps(row["OrderLines"])
+            else:
+                row["OrderLines"] = None
         
         return row
 
@@ -649,68 +400,23 @@ class SaleStream(LightspeedRSeriesStream):
         th.Property("tipEmployeeID", th.StringType),
         th.Property("tippableAmount", th.StringType),
         th.Property("taxTotal", th.StringType),
-        th.Property(
-            "SaleLines",
-            th.ObjectType(
-                th.Property(
-                    "SaleLine",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("saleLineID", th.StringType),
-                            th.Property("createTime", th.DateTimeType),
-                            th.Property("timeStamp", th.DateTimeType),
-                            th.Property("unitQuantity", th.StringType),
-                            th.Property("unitPrice", th.StringType),
-                            th.Property("normalUnitPrice", th.StringType),
-                            th.Property("discountAmount", th.StringType),
-                            th.Property("discountPercent", th.StringType),
-                            th.Property("avgCost", th.StringType),
-                            th.Property("fifoCost", th.StringType),
-                            th.Property("tax", th.StringType),
-                            th.Property("tax1Rate", th.StringType),
-                            th.Property("tax2Rate", th.StringType),
-                            th.Property("isLayaway", th.StringType),
-                            th.Property("isWorkorder", th.StringType),
-                            th.Property("isSpecialOrder", th.StringType),
-                            th.Property("displayableSubtotal", th.StringType),
-                            th.Property("displayableUnitPrice", th.StringType),
-                            th.Property("lineType", th.StringType),
-                            th.Property("calcLineDiscount", th.StringType),
-                            th.Property("calcTransactionDiscount", th.StringType),
-                            th.Property("calcTotal", th.StringType),
-                            th.Property("calcSubtotal", th.StringType),
-                            th.Property("calcTax1", th.StringType),
-                            th.Property("calcTax2", th.StringType),
-                            th.Property("taxClassID", th.StringType),
-                            th.Property("customerID", th.StringType),
-                            th.Property("discountID", th.StringType),
-                            th.Property("employeeID", th.StringType),
-                            th.Property("itemID", th.StringType),
-                            th.Property("noteID", th.StringType),
-                            th.Property("parentSaleLineID", th.StringType),
-                            th.Property("shopID", th.StringType),
-                            th.Property("saleID", th.StringType),
-                            th.Property("itemFeeID", th.StringType),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "MetaData",
-            th.ObjectType(
-                th.Property("tipOption1", th.StringType),
-                th.Property("tipOption2", th.StringType),
-                th.Property("tipOption3", th.StringType),
-            ),
-        ),
+        th.Property("SaleLines", th.StringType),
+        th.Property("MetaData", th.StringType),
     ).to_dict()
 
     def get_url_params(
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         params = super().get_url_params(context, next_page_token)
-        params["load_relations"] = json.dumps(["SaleLines"])
+        
+        relations = self.config.get("sales_relations", "all")
+        
+        if relations != "all":
+            relations = [relation.strip() for relation in relations.split(",") if relation.strip()]
+            params["load_relations"] = json.dumps(relations)
+        else:
+            params["load_relations"] = "all"
+        
         return params
 
     def post_process(self, row: dict, context: Optional[dict]) -> dict:
@@ -718,15 +424,14 @@ class SaleStream(LightspeedRSeriesStream):
             row["accountID"] = context.get("accountID")
             row["account_name"] = context.get("account_name")
         
-        # Normalize SaleLines.SaleLine: convert single object to array
-        if "SaleLines" in row and row["SaleLines"]:
-            sale_lines = row["SaleLines"]
-            if "SaleLine" in sale_lines:
-                sale_line = sale_lines["SaleLine"]
-                if isinstance(sale_line, dict):
-                    sale_lines["SaleLine"] = [sale_line]
-                elif not isinstance(sale_line, list):
-                    sale_lines["SaleLine"] = []
+        # Convert relation fields to JSON strings for simplicity
+        relation_fields = ["SaleLines", "MetaData"]
+        for field in relation_fields:
+            if field in row:
+                if row[field] and row[field] != "":
+                    row[field] = json.dumps(row[field])
+                else:
+                    row[field] = None
         
         return row
 
@@ -778,93 +483,26 @@ class ShipmentStream(LightspeedRSeriesStream):
         th.Property("cost", th.StringType),
         th.Property("vendorCost", th.StringType),
         th.Property("status", th.StringType),
-        th.Property(
-            "OrderShipmentItems",
-            th.ObjectType(
-                th.Property(
-                    "OrderShipmentItem",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property("orderShipmentItemID", th.StringType),
-                            th.Property("orderShipmentID", th.StringType),
-                            th.Property("qtyReceived", th.StringType),
-                            th.Property("vendorCost", th.StringType),
-                            th.Property("cost", th.StringType),
-                            th.Property("totalVendorCost", th.StringType),
-                            th.Property("totalCost", th.StringType),
-                            th.Property("shippingCost", th.StringType),
-                            th.Property("shippingVendorCost", th.StringType),
-                            th.Property("discountMoneyValue", th.StringType),
-                            th.Property("discountMoneyVendorValue", th.StringType),
-                            th.Property("discountPercentValue", th.StringType),
-                            th.Property("currencyCode", th.StringType),
-                            th.Property("vendorCurrencyCode", th.StringType),
-                            th.Property("vendorCurrencyRate", th.StringType),
-                            th.Property("createTime", th.DateTimeType),
-                            th.Property("timeStamp", th.DateTimeType),
-                            th.Property("employeeID", th.StringType),
-                            th.Property("itemID", th.StringType),
-                            th.Property("itemVendorID", th.StringType),
-                            th.Property("itemDescription", th.StringType),
-                            th.Property(
-                                "Item",
-                                th.ObjectType(
-                                    th.Property("itemID", th.StringType),
-                                    th.Property("systemSku", th.StringType),
-                                    th.Property("defaultCost", th.StringType),
-                                    th.Property("avgCost", th.StringType),
-                                    th.Property("fifoCost", th.StringType),
-                                    th.Property("discountable", th.StringType),
-                                    th.Property("tax", th.StringType),
-                                    th.Property("archived", th.StringType),
-                                    th.Property("itemType", th.StringType),
-                                    th.Property("serialized", th.StringType),
-                                    th.Property("description", th.StringType),
-                                    th.Property("modelYear", th.StringType),
-                                    th.Property("upc", th.StringType),
-                                    th.Property("ean", th.StringType),
-                                    th.Property("customSku", th.StringType),
-                                    th.Property("manufacturerSku", th.StringType),
-                                    th.Property("publishToEcom", th.StringType),
-                                    th.Property("timeStamp", th.DateTimeType),
-                                    th.Property("createTime", th.DateTimeType),
-                                    th.Property("categoryID", th.StringType),
-                                    th.Property("taxClassID", th.StringType),
-                                    th.Property("departmentID", th.StringType),
-                                    th.Property("itemMatrixID", th.StringType),
-                                    th.Property("itemAttributesID", th.StringType),
-                                    th.Property("manufacturerID", th.StringType),
-                                    th.Property("seasonID", th.StringType),
-                                    th.Property("defaultVendorID", th.StringType),
-                                    th.Property(
-                                        "Prices",
-                                        th.ObjectType(
-                                            th.Property(
-                                                "ItemPrice",
-                                                th.ArrayType(
-                                                    th.ObjectType(
-                                                        th.Property("amount", th.StringType),
-                                                        th.Property("useType", th.StringType),
-                                                        th.Property("useTypeID", th.StringType),
-                                                    ),
-                                                ),
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
+        th.Property("Employee", th.StringType),
+        th.Property("Order", th.StringType),
+        th.Property("OrderShipmentItems", th.StringType),
     ).to_dict()
 
     def get_url_params(
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         params = super().get_url_params(context, next_page_token)
-        params["load_relations"] = json.dumps(["OrderShipmentItems"])
+        
+        relations = self.config.get("shipments_relations", "all")
+        
+        if relations != "all":
+            relations = [relation.strip() for relation in relations.split(",") if relation.strip()]
+            params["load_relations"] = json.dumps(relations)
+        else:
+            params["load_relations"] = "all"
+            # Reduzir limit quando carregar todas as relações para evitar timeout
+            params["limit"] = 50  # Reduzir de 100 para 50
+        
         return params
 
     def post_process(self, row: dict, context: Optional[dict]) -> dict:
@@ -872,14 +510,85 @@ class ShipmentStream(LightspeedRSeriesStream):
             row["accountID"] = context.get("accountID")
             row["account_name"] = context.get("account_name")
         
-        # Normalize OrderShipmentItems.OrderShipmentItem: convert single object to array
-        if "OrderShipmentItems" in row and row["OrderShipmentItems"]:
-            shipment_items = row["OrderShipmentItems"]
-            if "OrderShipmentItem" in shipment_items:
-                shipment_item = shipment_items["OrderShipmentItem"]
-                if isinstance(shipment_item, dict):
-                    shipment_items["OrderShipmentItem"] = [shipment_item]
-                elif not isinstance(shipment_item, list):
-                    shipment_items["OrderShipmentItem"] = []
+        # Convert all relation fields to JSON strings for simplicity
+        relation_fields = ["Employee", "Order", "OrderShipmentItems"]
+        for field in relation_fields:
+            if field in row:
+                if row[field] and row[field] != "":
+                    row[field] = json.dumps(row[field])
+                else:
+                    row[field] = None
+        
+        return row
+
+
+class ShopStream(LightspeedRSeriesStream):
+    """Define Shop stream.
+    
+    Endpoint: GET /API/V3/Account/{accountID}/Shop.json
+    Documentation: https://developers.lightspeedhq.com/retail/endpoints/Shop/
+    """
+
+    name = "shops"
+    parent_stream_type = AccountStream
+    path = "/Account/{accountID}/Shop.json"
+    primary_keys = ["shopID"]
+    replication_key = None
+
+    records_jsonpath = "$.Shop[*]"
+
+    schema = th.PropertiesList(
+        th.Property("accountID", th.StringType, required=True),
+        th.Property("account_name", th.StringType),
+        th.Property("shopID", th.StringType, required=True),
+        th.Property("name", th.StringType),
+        th.Property("serviceRate", th.StringType),
+        th.Property("timeZone", th.StringType),
+        th.Property("taxLabor", th.StringType),
+        th.Property("labelTitle", th.StringType),
+        th.Property("labelMsrp", th.StringType),
+        th.Property("archived", th.StringType),
+        th.Property("timeStamp", th.DateTimeType, required=True),
+        th.Property("companyRegistrationNumber", th.StringType),
+        th.Property("vatNumber", th.StringType),
+        th.Property("zebraBrowserPrint", th.StringType),
+        th.Property("contactID", th.StringType),
+        th.Property("taxCategoryID", th.StringType),
+        th.Property("receiptSetupID", th.StringType),
+        th.Property("ccGatewayID", th.StringType),
+        th.Property("gatewayConfigID", th.StringType),
+        th.Property("priceLevelID", th.StringType),
+        th.Property("Contact", th.StringType),
+        th.Property("ReceiptSetup", th.StringType),
+        th.Property("TaxCategory", th.StringType),
+        th.Property("ShelfLocations", th.StringType),
+        th.Property("Registers", th.StringType),
+        th.Property("CCGateway", th.StringType),
+        th.Property("PriceLevel", th.StringType),
+    ).to_dict()
+
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        params = super().get_url_params(context, next_page_token)
+        params["load_relations"] = "all"
+        return params
+
+    def post_process(self, row: dict, context: Optional[dict]) -> dict:
+        if context:
+            row["accountID"] = context.get("accountID")
+            row["account_name"] = context.get("account_name")
+        
+        # Convert all relation fields to JSON strings for simplicity
+        relation_fields = [
+            "Contact", "ReceiptSetup", "TaxCategory", "ShelfLocations",
+            "Registers", "CCGateway", "PriceLevel"
+        ]
+        for field in relation_fields:
+            if field in row:
+                if row[field] and row[field] != "":
+                    row[field] = json.dumps(row[field])
+                else:
+                    row[field] = None
         
         return row
